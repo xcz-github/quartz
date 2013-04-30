@@ -509,7 +509,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * Set the JDBC driver delegate's initialization string.
      * </p>
      * 
-     * @param delegateInitString
+     * @param delegateClassName
      *          the delegate init string
      */
     public void setDriverDelegateInitString(String delegateInitString)
@@ -803,10 +803,10 @@ public abstract class JobStoreSupport implements JobStore, Constants {
         return conn;
     }
     
-    protected void releaseLock(Connection conn, String lockName, boolean doIt) {
-        if (doIt && (conn != null || getLockHandler().requiresConnection() == false)) {
+    protected void releaseLock(String lockName, boolean doIt) {
+        if (doIt) {
             try {
-                getLockHandler().releaseLock(conn, lockName);
+                getLockHandler().releaseLock(lockName);
             } catch (LockException le) {
                 getLog().error("Error returning lock: " + le.getMessage(), le);
             }
@@ -1306,7 +1306,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
     }
         
     public void storeJobsAndTriggers(
-            final Map<JobDetail, List<Trigger>> triggersAndJobs, final boolean replace)
+            final Map<JobDetail, Set<Trigger>> triggersAndJobs, final boolean replace)
             throws ObjectAlreadyExistsException, JobPersistenceException {
 
         executeInLock(
@@ -1329,8 +1329,8 @@ public abstract class JobStoreSupport implements JobStore, Constants {
     /**
      * Delete a job and its listeners.
      * 
-     * @see #removeJob(Connection, JobKey, boolean)
-     * @see #removeTrigger(Connection, TriggerKey)
+     * @see #removeJob(Connection, SchedulingContext, String, String, boolean)
+     * @see #removeTrigger(Connection, SchedulingContext, String, String)
      */
     private boolean deleteJobAndChildren(Connection conn, JobKey key)
         throws NoSuchDelegateException, SQLException {
@@ -1341,9 +1341,9 @@ public abstract class JobStoreSupport implements JobStore, Constants {
     /**
      * Delete a trigger, its listeners, and its Simple/Cron/BLOB sub-table entry.
      * 
-     * @see #removeJob(Connection, JobKey, boolean)
-     * @see #removeTrigger(Connection, TriggerKey)
-     * @see #replaceTrigger(Connection, TriggerKey, OperableTrigger)
+     * @see #removeJob(Connection, SchedulingContext, String, String, boolean)
+     * @see #removeTrigger(Connection, SchedulingContext, String, String)
+     * @see #replaceTrigger(Connection, SchedulingContext, String, String, Trigger)
      */
     private boolean deleteTriggerAndChildren(Connection conn, TriggerKey key)
         throws SQLException, NoSuchDelegateException {
@@ -1452,7 +1452,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
     }
 
     /** 
-     * @see org.quartz.spi.JobStore#replaceTrigger(TriggerKey, OperableTrigger)
+     * @see org.quartz.spi.JobStore#replaceTrigger(org.quartz.core.SchedulingContext, java.lang.String, java.lang.String, org.quartz.Trigger)
      */
     public boolean replaceTrigger(final TriggerKey triggerKey, 
             final OperableTrigger newTrigger) throws JobPersistenceException {
@@ -1531,11 +1531,11 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * Get the current state of the identified <code>{@link Trigger}</code>.
      * </p>
      * 
-     * @see TriggerState#NORMAL
-     * @see TriggerState#PAUSED
-     * @see TriggerState#COMPLETE
-     * @see TriggerState#ERROR
-     * @see TriggerState#NONE
+     * @see Trigger#NORMAL
+     * @see Trigger#PAUSED
+     * @see Trigger#COMPLETE
+     * @see Trigger#ERROR
+     * @see Trigger#NONE
      */
     public TriggerState getTriggerState(final TriggerKey triggerKey) throws JobPersistenceException {
         return (TriggerState)executeWithoutLock( // no locks necessary for read...
@@ -2144,7 +2144,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * Pause the <code>{@link org.quartz.Trigger}</code> with the given name.
      * </p>
      * 
-     * @see #resumeTrigger(TriggerKey)
+     * @see #resumeTrigger(SchedulingContext, String, String)
      */
     public void pauseTrigger(final TriggerKey triggerKey) throws JobPersistenceException {
         executeInLock(
@@ -2161,7 +2161,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * Pause the <code>{@link org.quartz.Trigger}</code> with the given name.
      * </p>
      * 
-     * @see #resumeTrigger(Connection, TriggerKey)
+     * @see #resumeTrigger(Connection, SchedulingContext, String, String)
      */
     public void pauseTrigger(Connection conn, 
             TriggerKey triggerKey)
@@ -2192,7 +2192,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * pausing all of its current <code>Trigger</code>s.
      * </p>
      * 
-     * @see #resumeJob(JobKey)
+     * @see #resumeJob(SchedulingContext, String, String)
      */
     public void pauseJob(final JobKey jobKey) throws JobPersistenceException {
         executeInLock(
@@ -2288,7 +2288,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * <code>Trigger</code>'s misfire instruction will be applied.
      * </p>
      * 
-     * @see #pauseTrigger(TriggerKey)
+     * @see #pauseTrigger(SchedulingContext, String, String)
      */
     public void resumeTrigger(final TriggerKey triggerKey) throws JobPersistenceException {
         executeInLock(
@@ -2311,7 +2311,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * <code>Trigger</code>'s misfire instruction will be applied.
      * </p>
      * 
-     * @see #pauseTrigger(Connection, TriggerKey)
+     * @see #pauseTrigger(Connection, SchedulingContext, String, String)
      */
     public void resumeTrigger(Connection conn, 
             TriggerKey key)
@@ -2367,7 +2367,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * instruction will be applied.
      * </p>
      * 
-     * @see #pauseJob(JobKey)
+     * @see #pauseJob(SchedulingContext, String, String)
      */
     public void resumeJob(final JobKey jobKey) throws JobPersistenceException {
         executeInLock(
@@ -2617,7 +2617,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * instructions WILL be applied.
      * </p>
      * 
-     * @see #resumeAll()
+     * @see #resumeAll(SchedulingContext)
      * @see #pauseTriggerGroup(SchedulingContext, String)
      */
     public void pauseAll() throws JobPersistenceException {
@@ -2641,7 +2641,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * instructions WILL be applied.
      * </p>
      * 
-     * @see #resumeAll(Connection)
+     * @see #resumeAll(SchedulingContext)
      * @see #pauseTriggerGroup(SchedulingContext, String)
      */
     public void pauseAll(Connection conn)
@@ -2676,7 +2676,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * <code>Trigger</code>'s misfire instruction will be applied.
      * </p>
      * 
-     * @see #pauseAll()
+     * @see #pauseAll(SchedulingContext)
      */
     public void resumeAll()
         throws JobPersistenceException {
@@ -2701,7 +2701,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * <code>Trigger</code>'s misfire instruction will be applied.
      * </p>
      * 
-     * @see #pauseAll(Connection)
+     * @see #pauseAll(SchedulingContext)
      */
     public void resumeAll(Connection conn)
         throws JobPersistenceException {
@@ -2732,7 +2732,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
      * by the calling scheduler.
      * </p>
      * 
-     * @see #releaseAcquiredTrigger(OperableTrigger)
+     * @see #releaseAcquiredTrigger(SchedulingContext, Trigger)
      */
     @SuppressWarnings("unchecked")
     public List<OperableTrigger> acquireNextTriggers(final long noLaterThan, final int maxCount, final long timeWindow)
@@ -2762,10 +2762,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
     // so that the fireInstanceId doesn't have to be on the trigger...
     protected List<OperableTrigger> acquireNextTrigger(Connection conn, long noLaterThan, int maxCount, long timeWindow)
         throws JobPersistenceException {
-    	if (timeWindow < 0) {
-          throw new IllegalArgumentException();
-        }
-        
+    	
     	List<OperableTrigger> acquiredTriggers = new ArrayList<OperableTrigger>();
         Set<JobKey> acquiredJobKeysForNoConcurrentExec = new HashSet<JobKey>();
         final int MAX_DO_LOOP_RETRY = 3;
@@ -2775,7 +2772,14 @@ public abstract class JobStoreSupport implements JobStore, Constants {
         do {
         	currentLoopCount ++;
             try {
-                List<TriggerKey> keys = getDelegate().selectTriggerToAcquire(conn, noLaterThan + timeWindow, getMisfireTime(), maxCount);
+                List<TriggerKey> keys = null;
+            	
+            	// If timeWindow is specified, then we need to select trigger fire time with wider range!
+            	if (timeWindow > 0) {
+            		keys = getDelegate().selectTriggerToAcquire(conn, noLaterThan + timeWindow, getMisfireTime(), maxCount);
+            	} else {
+            		keys = getDelegate().selectTriggerToAcquire(conn, noLaterThan, getMisfireTime(), maxCount);
+            	}
             	
             	// No trigger is ready to fire yet.
             	if (keys == null || keys.size() == 0)
@@ -2786,6 +2790,15 @@ public abstract class JobStoreSupport implements JobStore, Constants {
             		OperableTrigger nextTrigger = retrieveTrigger(conn, triggerKey);
 	                if(nextTrigger == null) {
 	                    continue; // next trigger
+	                }
+	                // it's possible that we've selected triggers way outside of the max fire ahead time for batches 
+	                // (up to idleWaitTime + fireAheadTime) so we need to make sure not to include such triggers.  
+	                // So we select from the first next trigger to fire up until the max fire ahead time after that...
+	                // which will perfectly honor the fireAheadTime window because the no firing will occur until
+	                // the first acquired trigger's fire time arrives.
+	                if(firstAcquiredTriggerFireTime > 0 && 
+	                        nextTrigger.getNextFireTime().getTime() > (firstAcquiredTriggerFireTime + timeWindow)) {
+	                    break;
 	                }
 	                
 	                // If trigger's job is set as @DisallowConcurrentExecution, and it has already been added to result, then
@@ -3188,7 +3201,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
                     + e.getMessage(), e);
         } finally {
             try {
-                releaseLock(conn, LOCK_TRIGGER_ACCESS, transOwner);
+                releaseLock(LOCK_TRIGGER_ACCESS, transOwner);
             } finally {
                 cleanupConnection(conn);
             }
@@ -3265,10 +3278,10 @@ public abstract class JobStoreSupport implements JobStore, Constants {
             throw e;
         } finally {
             try {
-                releaseLock(conn, LOCK_TRIGGER_ACCESS, transOwner);
+                releaseLock(LOCK_TRIGGER_ACCESS, transOwner);
             } finally {
                 try {
-                    releaseLock(conn, LOCK_STATE_ACCESS, transStateOwner);
+                    releaseLock(LOCK_STATE_ACCESS, transStateOwner);
                 } finally {
                     cleanupConnection(conn);
                 }
@@ -3704,14 +3717,14 @@ public abstract class JobStoreSupport implements JobStore, Constants {
     }
 
     /**
-     * Execute the given callback having acquired the given lock.  
+     * Execute the given callback having aquired the given lock.  
      * Depending on the JobStore, the surrounding transaction may be 
      * assumed to be already present (managed).  This version is just a 
      * handy wrapper around executeInLock that doesn't require a return
      * value.
      * 
-     * @param lockName The name of the lock to acquire, for example 
-     * "TRIGGER_ACCESS".  If null, then no lock is acquired, but the
+     * @param lockName The name of the lock to aquire, for example 
+     * "TRIGGER_ACCESS".  If null, then no lock is aquired, but the
      * lockCallback is still executed in a transaction. 
      * 
      * @see #executeInLock(String, TransactionCallback)
@@ -3730,12 +3743,12 @@ public abstract class JobStoreSupport implements JobStore, Constants {
     }
     
     /**
-     * Execute the given callback having acquired the given lock.
+     * Execute the given callback having aquired the given lock.  
      * Depending on the JobStore, the surrounding transaction may be 
      * assumed to be already present (managed).
      * 
-     * @param lockName The name of the lock to acquire, for example
-     * "TRIGGER_ACCESS".  If null, then no lock is acquired, but the
+     * @param lockName The name of the lock to aquire, for example 
+     * "TRIGGER_ACCESS".  If null, then no lock is aquired, but the
      * lockCallback is still executed in a transaction. 
      */
     protected abstract Object executeInLock(
@@ -3743,13 +3756,13 @@ public abstract class JobStoreSupport implements JobStore, Constants {
         TransactionCallback txCallback) throws JobPersistenceException;
     
     /**
-     * Execute the given callback having optionally acquired the given lock.
+     * Execute the given callback having optionally aquired the given lock.
      * This uses the non-managed transaction connection.  This version is just a 
      * handy wrapper around executeInNonManagedTXLock that doesn't require a return
      * value.
      * 
-     * @param lockName The name of the lock to acquire, for example 
-     * "TRIGGER_ACCESS".  If null, then no lock is acquired, but the
+     * @param lockName The name of the lock to aquire, for example 
+     * "TRIGGER_ACCESS".  If null, then no lock is aquired, but the
      * lockCallback is still executed in a non-managed transaction. 
      * 
      * @see #executeInNonManagedTXLock(String, TransactionCallback)
@@ -3768,11 +3781,11 @@ public abstract class JobStoreSupport implements JobStore, Constants {
     }
     
     /**
-     * Execute the given callback having optionally acquired the given lock.
+     * Execute the given callback having optionally aquired the given lock.
      * This uses the non-managed transaction connection.
      * 
-     * @param lockName The name of the lock to acquire, for example
-     * "TRIGGER_ACCESS".  If null, then no lock is acquired, but the
+     * @param lockName The name of the lock to aquire, for example 
+     * "TRIGGER_ACCESS".  If null, then no lock is aquired, but the
      * lockCallback is still executed in a non-managed transaction. 
      */
     protected Object executeInNonManagedTXLock(
@@ -3813,7 +3826,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
                     + e.getMessage(), e);
         } finally {
             try {
-                releaseLock(conn, lockName, transOwner);
+                releaseLock(lockName, transOwner);
             } finally {
                 cleanupConnection(conn);
             }
